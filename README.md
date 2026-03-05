@@ -1,0 +1,2 @@
+# EpiRadar
+Disease Outbreak Detection
