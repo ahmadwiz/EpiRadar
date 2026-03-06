@@ -19,6 +19,53 @@ const OUTBREAKS = [
 const SEV_COLOR: Record<string,string> = { high:"#ef4444", medium:"#f97316", low:"#22c55e" };
 const DISEASE_COLOR: Record<string,string> = { Malaria:"#ef4444", Measles:"#f97316", Influenza:"#8b5cf6", Tuberculosis:"#d97706" };
 
+function renderReportMarkdown(text: string) {
+  return text.split("\n").map((line, i) => {
+    const h2       = line.match(/^##\s+(.*)/);
+    const bold     = line.match(/^\*\*(.*)\*\*$/);
+    const hr       = line.trim() === "---";
+    const bullet   = line.match(/^-\s+(.*)/);
+    const empty    = line.trim() === "";
+
+    if (hr)     return <hr key={i} style={{ border: "none", borderTop: "1px solid #e5e7eb", margin: "16px 0" }} />;
+    if (empty)  return <div key={i} style={{ height: "8px" }} />;
+
+    if (h2) return (
+      <h2 key={i} style={{ fontSize: "14px", fontWeight: 800, color: "#111", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: "20px", marginBottom: "8px" }}>
+        {h2[1]}
+      </h2>
+    );
+
+    if (bold) return (
+      <p key={i} style={{ fontSize: "13px", fontWeight: 700, color: "#111", margin: "10px 0 4px" }}>
+        {bold[1]}
+      </p>
+    );
+
+    if (bullet) return (
+      <div key={i} style={{ fontSize: "13px", color: "#374151", lineHeight: 1.7, paddingLeft: "12px", borderLeft: "2px solid #e5e7eb", marginBottom: "4px" }}>
+        {renderInlineBold(bullet[1])}
+      </div>
+    );
+
+    return (
+      <p key={i} style={{ fontSize: "13px", color: "#374151", lineHeight: 1.7, margin: "4px 0" }}>
+        {renderInlineBold(line)}
+      </p>
+    );
+  });
+}
+
+// Handles inline **bold** within lines (e.g. "**TO:** Lagos Ministry")
+function renderInlineBold(text: string) {
+  return text.split(/\*\*(.*?)\*\*/g).map((part, i) =>
+    i % 2 === 1
+      ? <strong key={i} style={{ color: "#111", fontWeight: 700 }}>{part}</strong>
+      : <span key={i}>{part}</span>
+  );
+}
+
+
 const HOSPITAL = {
   name:"Lagos University Teaching Hospital", id:"LUTH-001",
   lat:6.52, lng:3.39, address:"Idi-Araba, Lagos Island, Nigeria",
@@ -199,10 +246,14 @@ export function HospitalDashboard(){
   const genReport=async()=>{
     setRptLoading(true);setRptText("");setRptDone(false);
     const lines=GROUPS.map((g:any)=>`  • ${g.disease}: ${g.total.toLocaleString()} cases, ${g.sites} site(s), ${g.sev} severity, closest ${g.closest}km`).join("\n");
+
+
+  const YOUR_API_KEY = "key";
+
     try{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:`You are Chief Medical Officer at ${HOSPITAL.name}, Lagos, Nigeria.\n\nDate: ${TODAY}\nHospital occupancy: ${HOSPITAL.occupied}/${HOSPITAL.capacity} beds (${OCC}%)\nStaff: ${HOSPITAL.staff.consultants} consultants, ${HOSPITAL.staff.nurses} nurses, ${HOSPITAL.staff.allied} allied health\nActive outbreaks within 600km:\n${lines}\n\nWrite a formal Outbreak Situation Report to the Lagos State Ministry of Health.\n\nUse exactly these section headings:\n1. EXECUTIVE SUMMARY\n2. CURRENT OUTBREAK STATUS\n3. HOSPITAL IMPACT ASSESSMENT\n4. RESOURCE & SUPPLY REQUIREMENTS\n5. RECOMMENDED ACTIONS FOR AUTHORITIES\n6. PUBLIC HEALTH RECOMMENDATIONS\n\nBe concise, specific, and use formal medical language. Include specific numbers, timelines, and actionable recommendations.`}]})});
+      const res=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${YOUR_API_KEY}`,"HTTP-Referer":"http://localhost:3000","X-Title":"EpiRadar"},body:JSON.stringify({model:"anthropic/claude-sonnet-4",max_tokens:1000,messages:[{role:"system",content:`You are Chief Medical Officer at ${HOSPITAL.name}, Lagos, Nigeria.`},{role:"user",content:`Date: ${TODAY}\nHospital occupancy: ${HOSPITAL.occupied}/${HOSPITAL.capacity} beds (${OCC}%)\nStaff: ${HOSPITAL.staff.consultants} consultants, ${HOSPITAL.staff.nurses} nurses, ${HOSPITAL.staff.allied} allied health\nActive outbreaks within 600km:\n${lines}\n\nWrite a formal Outbreak Situation Report to the Lagos State Ministry of Health.\n\nUse exactly these section headings:\n1. EXECUTIVE SUMMARY\n2. CURRENT OUTBREAK STATUS\n3. HOSPITAL IMPACT ASSESSMENT\n4. RESOURCE & SUPPLY REQUIREMENTS\n5. RECOMMENDED ACTIONS FOR AUTHORITIES\n6. PUBLIC HEALTH RECOMMENDATIONS\n\nBe concise, specific, and use formal medical language. Include specific numbers, timelines, and actionable recommendations.`}]})});
       const d=await res.json();
-      setRptText(d.content?.map((c:any)=>c.text).join("")||"Report generation failed. Please retry.");
+      setRptText(d.choices?.[0]?.message?.content||"Report generation failed. Please retry.");
     }catch{setRptText("Network error — ensure your API key is configured and try again.");}
     setRptLoading(false);setRptDone(true);
   };
@@ -262,7 +313,7 @@ export function HospitalDashboard(){
             <span style={{position:"absolute",top:"3px",left:dark?"18px":"3px",width:"14px",height:"14px",borderRadius:"50%",background:dark?"#22c55e":"#f59e0b",transition:"left 0.2s",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"8px"}}>{dark?"🌙":"☀️"}</span>
           </button>
           
-          <button onClick={()=>{logout();navigate("/");}} style={{padding:"5px 12px",borderRadius:"7px",border:`1px solid ${T.border}`,background:"transparent",color:T.text2,fontSize:"12px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
+          <button onClick={()=>{logout();window.location.href = "/";}} style={{padding:"5px 12px",borderRadius:"7px",border:`1px solid ${T.border}`,background:"transparent",color:T.text2,fontSize:"12px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
         </div>
       </header>
 
@@ -579,7 +630,7 @@ export function HospitalDashboard(){
                     </div>
                     <span style={{padding:"4px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"999px",fontSize:"10px",fontWeight:700,color:"#16a34a",letterSpacing:"0.06em"}}>OFFICIAL</span>
                   </div>
-                  <div style={{fontSize:"12px",color:T.text2,lineHeight:2,whiteSpace:"pre-wrap"}}>{rptText}</div>
+                  <div style={{fontSize:"12px",color:T.text2,lineHeight:2}}>{renderReportMarkdown(rptText)}</div>
                 </div>
               )}
             </div>

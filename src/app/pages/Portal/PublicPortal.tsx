@@ -96,11 +96,28 @@ function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
 }
 
 function renderMarkdown(text: string) {
-  return text.split(/\*\*(.*?)\*\*/g).map((part, i) =>
-    i % 2 === 1
-      ? <strong key={i} style={{ color: "#111", display: "block", marginTop: "12px", marginBottom: "4px", fontSize: "13px" }}>{part}</strong>
-      : <span key={i} style={{ fontSize: "13px", color: "#374151", lineHeight: 1.8 }}>{part}</span>
-  );
+  return text.split("\n").map((line, i) => {
+    const numberedLine = line.match(/^(\d+)\.\s+\*\*(.*?)\*\*:?\s*(.*)/);
+    const boldOnly = line.match(/^\*\*(.*?)\*\*$/);
+    const emptyLine = line.trim() === "";
+
+    if (emptyLine) return <div key={i} style={{ height: "6px" }} />;
+
+    if (numberedLine) {
+      const [, num, title, desc] = numberedLine;
+      return (
+        <div key={i} style={{ fontSize: "13px", color: "#374151", lineHeight: 1.8, marginBottom: "4px" }}>
+          <span style={{ fontWeight: 700, color: "#111" }}>{num}. {title}:</span> {desc}
+        </div>
+      );
+    }
+
+    if (boldOnly) {
+      return <strong key={i} style={{ color: "#111", display: "block", marginTop: "12px", marginBottom: "4px", fontSize: "13px" }}>{boldOnly[1]}</strong>;
+    }
+
+    return <span key={i} style={{ fontSize: "13px", color: "#374151", lineHeight: 1.8, display: "block" }}>{line}</span>;
+  });
 }
 
 export function PublicPortal() {
@@ -135,43 +152,55 @@ export function PublicPortal() {
       .map(o => `${o.disease} in ${o.country} (${Math.round(o.distance)}km away, ${o.severity} severity, ${o.cases} cases)`)
       .join("; ");
 
-    try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: `You are a public health advisor for EpiRadar, helping communities in developing countries stay safe during disease outbreaks.
+const YOUR_API_KEY = "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"
+
+        try {
+          const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${YOUR_API_KEY}`,
+              "HTTP-Referer": "http://localhost:3000",
+              "X-Title": "EpiRadar"
+            },
+            body: JSON.stringify({
+              model: "anthropic/claude-sonnet-4",
+              max_tokens: 1000,
+              messages: [
+                {
+                  role: "system",
+                  content: `You are a public health advisor for EpiRadar, helping communities in developing countries stay safe during disease outbreaks.
 Give clear, practical, culturally-sensitive advice. Use simple language. Be empathetic but not alarmist.
 Format your response in exactly 3 sections using **bold** headers:
 **Situation Overview**
 2-3 sentences summarizing the nearby threats.
 
-**Your Top 3 Priorities**
-1. First action
-2. Second action
-3. Third action
+**Your Top 3 Priorities:**
+1. Fist Priority
+2. Second Priority
+3. Third Priority
 
 **When To Seek Help**
 1-2 sentences on when to visit a clinic or hospital.
 
-Keep total response under 250 words. Focus on steps available in low-resource settings.`,
-          messages: [{
-            role: "user",
-            content: `I am located near ${locationName}. Nearby disease outbreaks: ${outbreakSummary}. What should I do to protect myself and my family?`
-          }]
-        })
-      });
+IMPORTANT: Each priority must start with its number on the same line as the bold title and description. Do not put numbers on their own separate lines.`
+                },
+                {
+                  role: "user",
+                  content: `I am located near ${locationName}. Nearby disease outbreaks: ${outbreakSummary}. What should I do to protect myself and my family?`
+                }
+              ]
+            })
+          });
 
-      const data = await response.json();
-      const text = data.content?.map((c: any) => c.text || "").join("") || "";
-      setAiAdvice(text || "Unable to generate advice. Please consult your local health authority.");
-    } catch {
-      setAiAdvice("Unable to connect. Please consult your local health authority or visit the nearest health clinic for guidance.");
-    }
-    setLoadingAI(false);
-  }, []);
+          const data = await response.json();
+          const text = data.choices?.[0]?.message?.content || "";
+          setAiAdvice(text || "Unable to generate advice. Please consult your local health authority.");
+        } catch {
+          setAiAdvice("Unable to connect. Please consult your local health authority or visit the nearest health clinic for guidance.");
+        }
+        setLoadingAI(false);
+        }, []);
 
   // Keep a ref so the global popup callback always calls the latest version
   const generateAIAdviceRef = useRef(generateAIAdvice);
