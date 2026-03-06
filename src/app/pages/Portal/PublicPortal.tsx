@@ -152,7 +152,7 @@ export function PublicPortal() {
       .map(o => `${o.disease} in ${o.country} (${Math.round(o.distance)}km away, ${o.severity} severity, ${o.cases} cases)`)
       .join("; ");
 
-const YOUR_API_KEY = "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"
+const YOUR_API_KEY = "key"
 
         try {
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
