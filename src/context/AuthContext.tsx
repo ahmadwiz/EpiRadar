@@ -1,6 +1,8 @@
 import { createContext, useContext, useState } from "react";
 import type { ReactNode } from "react";
 
+const API = "http://localhost:5000/api"; // 🔧 Change this to your backend URL in production
+
 type Role = "hospital" | "user" | null;
 
 interface AuthUser {
@@ -11,15 +13,10 @@ interface AuthUser {
 
 interface AuthContextType {
   user: AuthUser | null;
-  login: (email: string, password: string) => { success: boolean; role?: Role; error?: string };
-  register: (email: string, password: string, name: string) => { success: boolean; error?: string };
-  logout: () => void;
+  login: (email: string, password: string) => Promise<{ success: boolean; role?: Role; error?: string }>;
+  register: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
 }
-
-// ── Hardcoded hospital admin account ──────────────────────────
-const HOSPITAL_ADMINS = [
-  { email: "admin@hospital.com", password: "admin123", name: "Hospital Admin", role: "hospital" as Role },
-];
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -29,52 +26,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return stored ? JSON.parse(stored) : null;
   });
 
-  const login = (email: string, password: string) => {
-    // Check hardcoded hospital admins first
-    const admin = HOSPITAL_ADMINS.find(
-      (a) => a.email === email && a.password === password
-    );
-    if (admin) {
-      const authUser = { email: admin.email, role: admin.role, name: admin.name };
+  // ── Login ──────────────────────────────────────────────────────────────
+  const login = async (email: string, password: string) => {
+    try {
+      const res = await fetch(`${API}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) return { success: false, error: data.error };
+
+      const authUser: AuthUser = { email: data.email, role: data.role, name: data.name };
       setUser(authUser);
       localStorage.setItem("epi_user", JSON.stringify(authUser));
-      return { success: true, role: admin.role };
-    }
+      localStorage.setItem("epi_token", data.token);
 
-    // Check registered users from localStorage
-    const users: { email: string; password: string; name: string }[] =
-      JSON.parse(localStorage.getItem("epi_registered_users") || "[]");
-    const found = users.find((u) => u.email === email && u.password === password);
-    if (found) {
-      const authUser = { email: found.email, role: "user" as Role, name: found.name };
+      return { success: true, role: data.role };
+    } catch {
+      return { success: false, error: "Could not connect to server. Please try again." };
+    }
+  };
+
+  // ── Register ───────────────────────────────────────────────────────────
+  const register = async (email: string, password: string, name: string) => {
+    try {
+      const res = await fetch(`${API}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, name }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) return { success: false, error: data.error };
+
+      const authUser: AuthUser = { email: data.email, role: data.role, name: data.name };
       setUser(authUser);
       localStorage.setItem("epi_user", JSON.stringify(authUser));
-      return { success: true, role: 'user' as Role };
-    }
+      localStorage.setItem("epi_token", data.token);
 
-    return { success: false, error: "Invalid email or password." };
+      return { success: true };
+    } catch {
+      return { success: false, error: "Could not connect to server. Please try again." };
+    }
   };
 
-  const register = (email: string, password: string, name: string) => {
-    const users: { email: string; password: string; name: string }[] =
-      JSON.parse(localStorage.getItem("epi_registered_users") || "[]");
-
-    if (users.find((u) => u.email === email)) {
-      return { success: false, error: "An account with this email already exists." };
+  // ── Logout ─────────────────────────────────────────────────────────────
+  const logout = async () => {
+    const token = localStorage.getItem("epi_token");
+    try {
+      await fetch(`${API}/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      // Logout locally even if server call fails
     }
-
-    users.push({ email, password, name });
-    localStorage.setItem("epi_registered_users", JSON.stringify(users));
-
-    const authUser = { email, role: "user" as Role, name };
-    setUser(authUser);
-    localStorage.setItem("epi_user", JSON.stringify(authUser));
-    return { success: true };
-  };
-
-  const logout = () => {
     setUser(null);
     localStorage.removeItem("epi_user");
+    localStorage.removeItem("epi_token");
   };
 
   return (
