@@ -248,7 +248,7 @@ export function HospitalDashboard(){
     const lines=GROUPS.map((g:any)=>`  • ${g.disease}: ${g.total.toLocaleString()} cases, ${g.sites} site(s), ${g.sev} severity, closest ${g.closest}km`).join("\n");
 
 
-  const YOUR_API_KEY = "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";
+  const YOUR_API_KEY = "key";
 
     try{
       const res=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${YOUR_API_KEY}`,"HTTP-Referer":"http://localhost:3000","X-Title":"EpiRadar"},body:JSON.stringify({model:"anthropic/claude-sonnet-4",max_tokens:1000,messages:[{role:"system",content:`You are Chief Medical Officer at ${HOSPITAL.name}, Lagos, Nigeria.`},{role:"user",content:`Date: ${TODAY}\nHospital occupancy: ${HOSPITAL.occupied}/${HOSPITAL.capacity} beds (${OCC}%)\nStaff: ${HOSPITAL.staff.consultants} consultants, ${HOSPITAL.staff.nurses} nurses, ${HOSPITAL.staff.allied} allied health\nActive outbreaks within 600km:\n${lines}\n\nWrite a formal Outbreak Situation Report to the Lagos State Ministry of Health.\n\nUse exactly these section headings:\n1. EXECUTIVE SUMMARY\n2. CURRENT OUTBREAK STATUS\n3. HOSPITAL IMPACT ASSESSMENT\n4. RESOURCE & SUPPLY REQUIREMENTS\n5. RECOMMENDED ACTIONS FOR AUTHORITIES\n6. PUBLIC HEALTH RECOMMENDATIONS\n\nBe concise, specific, and use formal medical language. Include specific numbers, timelines, and actionable recommendations.`}]})});
