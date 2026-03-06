@@ -135,14 +135,24 @@ export function PublicPortal() {
       .map(o => `${o.disease} in ${o.country} (${Math.round(o.distance)}km away, ${o.severity} severity, ${o.cases} cases)`)
       .join("; ");
 
-    try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: `You are a public health advisor for EpiRadar, helping communities in developing countries stay safe during disease outbreaks.
+const YOUR_API_KEY = "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"
+
+        try {
+          const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${YOUR_API_KEY}`,
+              "HTTP-Referer": "http://localhost:3000",
+              "X-Title": "EpiRadar"
+            },
+            body: JSON.stringify({
+              model: "anthropic/claude-sonnet-4",
+              max_tokens: 1000,
+              messages: [
+                {
+                  role: "system",
+                  content: `You are a public health advisor for EpiRadar, helping communities in developing countries stay safe during disease outbreaks.
 Give clear, practical, culturally-sensitive advice. Use simple language. Be empathetic but not alarmist.
 Format your response in exactly 3 sections using **bold** headers:
 **Situation Overview**
@@ -156,22 +166,24 @@ Format your response in exactly 3 sections using **bold** headers:
 **When To Seek Help**
 1-2 sentences on when to visit a clinic or hospital.
 
-Keep total response under 250 words. Focus on steps available in low-resource settings.`,
-          messages: [{
-            role: "user",
-            content: `I am located near ${locationName}. Nearby disease outbreaks: ${outbreakSummary}. What should I do to protect myself and my family?`
-          }]
-        })
-      });
+Keep total response under 250 words. Focus on steps available in low-resource settings.`
+                },
+                {
+                  role: "user",
+                  content: `I am located near ${locationName}. Nearby disease outbreaks: ${outbreakSummary}. What should I do to protect myself and my family?`
+                }
+              ]
+            })
+          });
 
-      const data = await response.json();
-      const text = data.content?.map((c: any) => c.text || "").join("") || "";
-      setAiAdvice(text || "Unable to generate advice. Please consult your local health authority.");
-    } catch {
-      setAiAdvice("Unable to connect. Please consult your local health authority or visit the nearest health clinic for guidance.");
-    }
-    setLoadingAI(false);
-  }, []);
+          const data = await response.json();
+          const text = data.choices?.[0]?.message?.content || "";
+          setAiAdvice(text || "Unable to generate advice. Please consult your local health authority.");
+        } catch {
+          setAiAdvice("Unable to connect. Please consult your local health authority or visit the nearest health clinic for guidance.");
+        }
+        setLoadingAI(false);
+        }, []);
 
   // Keep a ref so the global popup callback always calls the latest version
   const generateAIAdviceRef = useRef(generateAIAdvice);
