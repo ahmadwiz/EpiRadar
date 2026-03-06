@@ -67,7 +67,7 @@ export function HomePage() {
           position: "relative",
           overflow: "hidden",
           padding: "120px 48px",
-          marginTop: "30px",
+          marginTop: "39px",
           minHeight: "100vh",
           display: "flex",
           alignItems: "center",
