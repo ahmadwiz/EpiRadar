@@ -18,9 +18,11 @@ export const router = createBrowserRouter([
     element: <RootLayout />,
     children: [
       { path: "/", element: <HomePage /> },
-      { path: "/login", element: <Login /> },
     ],
   },
+
+  // ── Auth routes (no navbar/footer) ──────────────────────────
+  { path: "/login", element: <Login /> },
 
   // ── Portal: public but no navbar/footer ─────────────────────
   { path: "/portal", element: <PublicPortal /> },

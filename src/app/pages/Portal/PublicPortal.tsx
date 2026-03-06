@@ -38,7 +38,6 @@ const OUTBREAKS = [
   { id: 28, disease: "Measles",       lat: 34.0,  lng: -118.2,country: "USA (California)",     severity: "low",    cases: 88,   color: "#4aad2a" },
   { id: 29, disease: "Influenza",     lat: 41.8,  lng: -87.6, country: "USA (Chicago)",        severity: "medium", cases: 2600, color: "#f97316" },
   { id: 30, disease: "Typhoid",       lat: 29.8,  lng: -95.4, country: "USA (Texas)",          severity: "low",    cases: 55,   color: "#4aad2a" },
-  { id: 31, disease: "Dengue",        lat: 18.5,  lng: -66.1, country: "Puerto Rico",          severity: "high",   cases: 720,  color: "#ef4444" },
   { id: 32, disease: "Influenza",     lat: 43.7,  lng: -79.4, country: "Canada",               severity: "low",    cases: 1400, color: "#4aad2a" },
   { id: 33, disease: "Measles",       lat: 19.4,  lng: -99.1, country: "Mexico",               severity: "medium", cases: 430,  color: "#f97316" },
   { id: 34, disease: "Dengue",        lat: 15.5,  lng: -88.0, country: "Honduras",             severity: "high",   cases: 890,  color: "#ef4444" },
@@ -221,104 +220,84 @@ Keep total response under 250 words. Focus on steps available in low-resource se
     renderMarkers(map, OUTBREAKS);
   }, [mapReady]);
 
-  function buildHeatLayer(map: any, outbreaks: Outbreak[]) {
-    const L = (window as any).L;
-    if (heatLayerRef.current) { map.removeLayer(heatLayerRef.current); heatLayerRef.current = null; }
-    if (!L.heatLayer) return;
+  // Zones ref for cleanup
+  const zonesRef = useRef<any[]>([]);
 
-    // Group hospitals by disease
-    const diseaseGroups: Record<string, Outbreak[]> = {};
+  function buildZones(map: any, outbreaks: Outbreak[]) {
+    const L = (window as any).L;
+
+    // Clear old zones
+    zonesRef.current.forEach(z => map.removeLayer(z));
+    zonesRef.current = [];
+
+    // Draw a filled circle zone per outbreak — radius & opacity driven by severity & cases
     outbreaks.forEach(ob => {
-      if (!diseaseGroups[ob.disease]) diseaseGroups[ob.disease] = [];
-      diseaseGroups[ob.disease].push(ob);
+      const baseRadius = ob.severity === "high" ? 180000 : ob.severity === "medium" ? 120000 : 75000;
+      const caseBoost  = Math.min(ob.cases / 2000, 1.4);
+      const radius     = baseRadius * (0.7 + 0.3 * caseBoost);
+      const fillAlpha  = ob.severity === "high" ? 0.16 : ob.severity === "medium" ? 0.1 : 0.06;
+      const borderAlpha = ob.severity === "high" ? 0.55 : ob.severity === "medium" ? 0.4 : 0.25;
+
+      const zone = L.circle([ob.lat, ob.lng], {
+        radius,
+        color:       ob.color,
+        weight:      1.5,
+        opacity:     borderAlpha,
+        fillColor:   ob.color,
+        fillOpacity: fillAlpha,
+        dashArray:   ob.severity === "low" ? "4 4" : undefined,
+      }).addTo(map);
+      zonesRef.current.push(zone);
     });
 
-    const heatPoints: [number, number, number][] = [];
+    // For same-disease clusters within 1400km, draw a connecting bridge zone
+    // that visually links the two outbreak circles to show regional spread
+    const groups: Record<string, Outbreak[]> = {};
+    outbreaks.forEach(ob => { if (!groups[ob.disease]) groups[ob.disease] = []; groups[ob.disease].push(ob); });
 
-    Object.values(diseaseGroups).forEach(group => {
-      if (group.length < 2) return;
-
-      // For every pair of same-disease hospitals within 1200km, flood the
-      // entire region between them with heat — not just a thin line but a
-      // wide blob covering the surrounding population area.
-      for (let i = 0; i < group.length; i++) {
-        for (let j = i + 1; j < group.length; j++) {
-          const a = group[i];
-          const b = group[j];
+    Object.values(groups).forEach(grp => {
+      if (grp.length < 2) return;
+      for (let i = 0; i < grp.length; i++) {
+        for (let j = i + 1; j < grp.length; j++) {
+          const a = grp[i], b = grp[j];
           const dist = haversineDistance(a.lat, a.lng, b.lat, b.lng);
-          if (dist > 1200) continue;
+          if (dist > 1400) continue;
 
-          const severity = (a.severity === "high" || b.severity === "high") ? 1.0
-                         : (a.severity === "medium" || b.severity === "medium") ? 0.65 : 0.35;
-          const caseFactor = Math.min((a.cases + b.cases) / 1500, 1.6);
-          const intensity = severity * caseFactor;
+          const severity = (a.severity === "high" || b.severity === "high") ? "high"
+                         : (a.severity === "medium" || b.severity === "medium") ? "medium" : "low";
+          const fillAlpha   = severity === "high" ? 0.09 : severity === "medium" ? 0.06 : 0.03;
+          const strokeAlpha = severity === "high" ? 0.3  : severity === "medium" ? 0.2  : 0.12;
 
-          // Dense grid of points filling the bounding box between the two hospitals.
-          // This creates a filled regional blob rather than just a line.
-          const minLat = Math.min(a.lat, b.lat);
-          const maxLat = Math.max(a.lat, b.lat);
-          const minLng = Math.min(a.lng, b.lng);
-          const maxLng = Math.max(a.lng, b.lng);
+          // Place intermediate circles along the corridor at 25%, 50%, 75%
+          [0.25, 0.5, 0.75].forEach(t => {
+            const lat = a.lat + (b.lat - a.lat) * t;
+            const lng = a.lng + (b.lng - a.lng) * t;
+            // Bridge circle radius tapers — widest in middle
+            const taper = 1 - Math.abs(t - 0.5) * 0.8;
+            const bridgeR = (severity === "high" ? 110000 : severity === "medium" ? 75000 : 50000) * taper;
+            const bridge = L.circle([lat, lng], {
+              radius: bridgeR,
+              color: a.color, weight: 0, opacity: 0,
+              fillColor: a.color, fillOpacity: fillAlpha,
+            }).addTo(map);
+            zonesRef.current.push(bridge);
+          });
 
-          // Pad the bounding box outward so the heat bleeds beyond just the line
-          const latPad = Math.max((maxLat - minLat) * 0.5, 1.5);
-          const lngPad = Math.max((maxLng - minLng) * 0.5, 1.5);
-
-          const gridSteps = 12;
-          for (let gi = 0; gi <= gridSteps; gi++) {
-            for (let gj = 0; gj <= gridSteps; gj++) {
-              const lat = (minLat - latPad) + ((maxLat - minLat + latPad * 2) * gi / gridSteps);
-              const lng = (minLng - lngPad) + ((maxLng - minLng + lngPad * 2) * gj / gridSteps);
-
-              // Weight each grid point by how close it is to the line between
-              // the two hospitals — hot along the corridor, fading at edges
-              const tClosest = Math.max(0, Math.min(1,
-                ((lat - a.lat) * (b.lat - a.lat) + (lng - a.lng) * (b.lng - a.lng)) /
-                ((b.lat - a.lat) ** 2 + (b.lng - a.lng) ** 2 + 0.0001)
-              ));
-              const closestLat = a.lat + tClosest * (b.lat - a.lat);
-              const closestLng = a.lng + tClosest * (b.lng - a.lng);
-              const perpDist = Math.sqrt((lat - closestLat) ** 2 + (lng - closestLng) ** 2);
-              const falloff = Math.max(0, 1 - perpDist / (latPad * 0.9));
-
-              if (falloff > 0.05) {
-                heatPoints.push([lat, lng, intensity * falloff * 0.8]);
-              }
-            }
-          }
-
-          // Strong anchor points at each hospital — hottest spots
-          heatPoints.push([a.lat, a.lng, intensity]);
-          heatPoints.push([b.lat, b.lng, intensity]);
-          // Midpoint anchor to ensure the middle stays hot
-          heatPoints.push([(a.lat + b.lat) / 2, (a.lng + b.lng) / 2, intensity * 0.75]);
+          // Dashed polyline connecting the two dots as a visual "spread path"
+          const line = L.polyline([[a.lat, a.lng],[b.lat, b.lng]], {
+            color: a.color, weight: 1.5, opacity: strokeAlpha, dashArray: "5 8",
+          }).addTo(map);
+          zonesRef.current.push(line);
         }
       }
     });
-
-    if (heatPoints.length > 0) {
-      heatLayerRef.current = L.heatLayer(heatPoints, {
-        radius: 45,
-        blur: 35,
-        maxZoom: 10,
-        max: 1.6,
-        gradient: {
-          0.0:  "rgba(254,249,195,0)",
-          0.15: "rgba(253,224,71,0.35)",
-          0.35: "rgba(251,146,60,0.6)",
-          0.55: "rgba(239,68,68,0.75)",
-          0.75: "rgba(185,28,28,0.88)",
-          1.0:  "rgba(127,29,29,0.95)",
-        },
-      }).addTo(map);
-    }
   }
 
   function renderMarkers(map: any, outbreaks: Outbreak[]) {
     const L = (window as any).L;
     markersRef.current.forEach(m => map.removeLayer(m));
     markersRef.current = [];
-    buildHeatLayer(map, outbreaks);
+    buildZones(map, outbreaks);
     outbreaks.forEach(ob => {
       const size = ob.severity === "high" ? 22 : ob.severity === "medium" ? 16 : 12;
       const pulse = size + 14;

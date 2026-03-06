@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState } from "react";
+import type { ReactNode } from "react";
 
 type Role = "hospital" | "user" | null;
 
@@ -10,7 +11,7 @@ interface AuthUser {
 
 interface AuthContextType {
   user: AuthUser | null;
-  login: (email: string, password: string) => { success: boolean; error?: string };
+  login: (email: string, password: string) => { success: boolean; role?: Role; error?: string };
   register: (email: string, password: string, name: string) => { success: boolean; error?: string };
   logout: () => void;
 }
@@ -37,7 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const authUser = { email: admin.email, role: admin.role, name: admin.name };
       setUser(authUser);
       localStorage.setItem("epi_user", JSON.stringify(authUser));
-      return { success: true };
+      return { success: true, role: admin.role };
     }
 
     // Check registered users from localStorage
@@ -48,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const authUser = { email: found.email, role: "user" as Role, name: found.name };
       setUser(authUser);
       localStorage.setItem("epi_user", JSON.stringify(authUser));
-      return { success: true };
+      return { success: true, role: 'user' as Role };
     }
 
     return { success: false, error: "Invalid email or password." };

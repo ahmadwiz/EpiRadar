@@ -120,7 +120,7 @@ export default function NavbarDemo() {
                     variant="primary"
                     className="w-full"
                   >
-                    Sign in
+                    Log in
                   </NavbarButton>
                 </>
               )}
